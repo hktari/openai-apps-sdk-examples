@@ -1190,7 +1190,7 @@ function ChartBuilder({
         {!loading && chart && <ChartCanvas response={chart} />}
         {!loading && !chart && (
           <div className="flex h-full items-center justify-center rounded-md border border-dashed border-neutral-200 text-sm text-neutral-500">
-            Configure chart inputs and run to see a visualisation.
+            Configure chart inputs and run to see a visualization.
           </div>
         )}
       </div>

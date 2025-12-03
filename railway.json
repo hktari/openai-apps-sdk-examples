@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "node railway-server.js",
+    "healthcheckPath": "/health"
+  }
+}

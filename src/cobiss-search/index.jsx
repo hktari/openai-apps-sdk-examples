@@ -102,7 +102,7 @@ export function useDisplayMode() {
   return useOpenAiGlobal("displayMode");
 }
 
-function App() {
+export default function App() {
   // Use the proper OpenAI Apps SDK data access pattern
   const toolOutput = useToolOutput();
   const toolInput = useToolInput();

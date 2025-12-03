@@ -25,6 +25,8 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import cobissApi from "./cobissApi/api.js";
+import { cobissApiRequestSchema } from "./cobissApi/schema.js";
 
 type PizzazWidget = {
   id: string;
@@ -93,49 +95,13 @@ function widgetInvocationMeta(widget: PizzazWidget) {
 
 const widgets: PizzazWidget[] = [
   {
-    id: "pizza-map",
-    title: "Show Pizza Map",
-    templateUri: "ui://widget/pizza-map.html",
-    invoking: "Hand-tossing a map",
-    invoked: "Served a fresh map",
-    html: readWidgetHtml("pizzaz"),
-    responseText: "Rendered a pizza map!",
-  },
-  {
-    id: "pizza-carousel",
-    title: "Show Pizza Carousel",
-    templateUri: "ui://widget/pizza-carousel.html",
-    invoking: "Carousel some spots",
-    invoked: "Served a fresh carousel",
-    html: readWidgetHtml("pizzaz-carousel"),
-    responseText: "Rendered a pizza carousel!",
-  },
-  {
-    id: "pizza-albums",
-    title: "Show Pizza Album",
-    templateUri: "ui://widget/pizza-albums.html",
-    invoking: "Hand-tossing an album",
-    invoked: "Served a fresh album",
-    html: readWidgetHtml("pizzaz-albums"),
-    responseText: "Rendered a pizza album!",
-  },
-  {
-    id: "pizza-list",
-    title: "Show Pizza List",
-    templateUri: "ui://widget/pizza-list.html",
-    invoking: "Hand-tossing a list",
-    invoked: "Served a fresh list",
-    html: readWidgetHtml("pizzaz-list"),
-    responseText: "Rendered a pizza list!",
-  },
-  {
-    id: "pizza-shop",
-    title: "Open Pizzaz Shop",
-    templateUri: "ui://widget/pizza-shop.html",
-    invoking: "Opening the shop",
-    invoked: "Shop opened",
-    html: readWidgetHtml("pizzaz-shop"),
-    responseText: "Rendered the Pizzaz shop!",
+    id: "cobiss-search",
+    title: "Search COBISS+ Library",
+    templateUri: "ui://widget/cobiss-search.html",
+    invoking: "Searching the library",
+    invoked: "Library search complete",
+    html: readWidgetHtml("cobiss-search"),
+    responseText: "Found library search results!",
   },
 ];
 
@@ -159,23 +125,50 @@ const toolInputSchema = {
   additionalProperties: false,
 } as const;
 
+const cobissToolInputSchema = {
+  type: "object",
+  properties: {
+    title: {
+      type: "string",
+      description: "Book title to search for",
+    },
+    library_id: {
+      type: "string",
+      description: "Library ID to search in",
+    },
+    author: {
+      type: "string",
+      description: "Book author to search for",
+    },
+  },
+  required: ["title", "library_id"],
+  additionalProperties: false,
+} as const;
+
 const toolInputParser = z.object({
   pizzaTopping: z.string(),
 });
 
-const tools: Tool[] = widgets.map((widget) => ({
-  name: widget.id,
-  description: widget.title,
-  inputSchema: toolInputSchema,
-  title: widget.title,
-  _meta: widgetDescriptorMeta(widget),
-  // To disable the approval prompt for the widgets
-  annotations: {
-    destructiveHint: false,
-    openWorldHint: false,
-    readOnlyHint: true,
-  },
-}));
+const cobissToolInputParser = z.object({
+  title: z.string(),
+  library_id: z.string(),
+  author: z.string().optional(),
+});
+
+const tools: Tool[] = [
+  ...widgets.map((widget) => ({
+    name: widget.id,
+    description: widget.title,
+    inputSchema: cobissToolInputSchema,
+    title: widget.title,
+    _meta: widgetDescriptorMeta(widget),
+    annotations: {
+      destructiveHint: false,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
+  })),
+];
 
 const resources: Resource[] = widgets.map((widget) => ({
   uri: widget.templateUri,
@@ -196,7 +189,7 @@ const resourceTemplates: ResourceTemplate[] = widgets.map((widget) => ({
 function createPizzazServer(): Server {
   const server = new Server(
     {
-      name: "pizzaz-node",
+      name: "cobiss-plus-mcp",
       version: "0.1.0",
     },
     {
@@ -259,20 +252,59 @@ function createPizzazServer(): Server {
         throw new Error(`Unknown tool: ${request.params.name}`);
       }
 
-      const args = toolInputParser.parse(request.params.arguments ?? {});
+      if (request.params.name.startsWith("cobiss")) {
+        const args = cobissToolInputParser.parse(
+          request.params.arguments ?? {}
+        );
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: widget.responseText,
+        try {
+          const searchResults = await cobissApi.search(args);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: widget.responseText,
+              },
+            ],
+            structuredContent: searchResults,
+            _meta: widgetInvocationMeta(widget),
+          };
+        } catch (error) {
+          console.error("COBISS API search failed:", error);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Failed to search COBISS+ library: ${
+                  error instanceof Error ? error.message : "Unknown error"
+                }`,
+              },
+            ],
+            structuredContent: {
+              books: [],
+              error: error instanceof Error ? error.message : "Unknown error",
+            },
+            _meta: widgetInvocationMeta(widget),
+          };
+        }
+      } else {
+        const args = toolInputParser.parse(request.params.arguments ?? {});
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: widget.responseText,
+            },
+          ],
+          structuredContent: {
+            pizzaTopping: args.pizzaTopping,
           },
-        ],
-        structuredContent: {
-          pizzaTopping: args.pizzaTopping,
-        },
-        _meta: widgetInvocationMeta(widget),
-      };
+          _meta: widgetInvocationMeta(widget),
+        };
+      }
     }
   );
 
